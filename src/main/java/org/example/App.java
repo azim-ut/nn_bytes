@@ -17,59 +17,44 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class App {
-
     @Inject
-    private BytesFetcher byteFetcher;
+    private BytesFetcher bytesFetcher;
 
     @Inject
     private ImageDrawService imageDrawService;
 
     public static void main(String[] args) {
-        final App app;
-        try {
-            app = Guice.createInjector(new AudioModule()).getInstance(App.class);
-            Runtime.getRuntime().addShutdownHook(new Thread(app::stop));
-
-            app.start();
-        } catch (Exception e) {
-            log.error(e.getLocalizedMessage(), e);
-        }
-
-
+        App app = Guice.createInjector(new AudioModule()).getInstance(App.class);
+        Runtime.getRuntime().addShutdownHook(new Thread(app::stop));
+        app.start();
     }
 
-
-    public App() {
-        System.out.println("App");
-    }
-
-    public void start() {
-        BufferedReader console = new BufferedReader(new InputStreamReader(System.in));
-        List<String> commands = new ArrayList<>();
-        String command;
-        try {
+    private void start() {
+        try (BufferedReader console = new BufferedReader(new InputStreamReader(System.in));) {
+            List<String> commands = new ArrayList<>();
+            String command;
             while ((command = console.readLine()) != null) {
                 commands.add(0, command);
-                if (byteFetcher.inProgress()) {
-                    String word = commands.get(1);
-                    byteFetcher.stop();
-                    byte[] bytes = byteFetcher.getBytes();
+                if (bytesFetcher.inProgress()) {
+                    String target = commands.get(1);
+                    bytesFetcher.stop();
+                    byte[] bytes = bytesFetcher.getBytes();
                     int w = 240;
                     int h = 240;
-                    log.info("Start draw");
-                    imageDrawService.draw(word, w, h, bytes);
-                    log.info("Finish draw");
+                    log.info("Draw started");
+                    imageDrawService.draw(target, w, h, bytes);
+                    log.info("Draw finished");
+                    commands = new ArrayList<>();
                 } else {
-                    byteFetcher.start();
+                    bytesFetcher.start();
                 }
             }
         } catch (Exception e) {
-            log.error(e.getLocalizedMessage(), e);
+            log.error(e.getLocalizedMessage());
         }
     }
 
-    public void stop() {
+    private void stop() {
         imageDrawService.clear();
     }
-
 }

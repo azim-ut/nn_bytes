@@ -1,14 +1,12 @@
-package org.example.audio.service;
+package org.example.services;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.inject.Singleton;
 import javax.sound.sampled.AudioFileFormat;
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
@@ -17,52 +15,23 @@ import javax.sound.sampled.DataLine;
 import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.TargetDataLine;
 
-import org.example.services.BytesFetcher;
-
 import com.google.common.primitives.Bytes;
 
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-@Singleton
-public class AudioByteFetcherService implements BytesFetcher {
+public class AudioBytesFetcher implements BytesFetcher {
 
     private Thread listener;
     private TargetDataLine line;
-    private InputStream inputStream;
+    private AudioInputStream inputStream;
     private AudioFormat audioFormat;
     private final String tempFilePath = "file/voice/record.wav";
     private final byte noyceLevel = -120;
 
     @Override
-    public boolean inProgress() {
-        return listener != null && listener.isAlive() && !listener.isInterrupted();
-    }
-
-    @Override
-    public byte[] getBytes() {
-        List<Byte> res = new ArrayList<>();
-        try {
-            byte[] bytes = Files.readAllBytes(Path.of(tempFilePath));
-            for (int i = 0; i < bytes.length; i++) {
-                byte b = bytes[i];
-                if (b < noyceLevel) {
-                    b = -128;
-                }
-                if (b == -128 && res.size() > 0 && res.get(res.size() - 1) == b) {
-                    continue;
-                }
-                res.add(b);
-            }
-        } catch (Exception e) {
-            log.error("Read temp file exception: {}", e.getLocalizedMessage(), e);
-        }
-        return Bytes.toArray(res);
-    }
-
-    @Override
     public void start() {
-        log.info("Started");
+        log.info("{} Started", getClass().getName());
         audioFormat = new AudioFormat(16000, 8, 2, true, true);
         DataLine.Info info = new DataLine.Info(TargetDataLine.class, audioFormat);
 
@@ -70,22 +39,23 @@ public class AudioByteFetcherService implements BytesFetcher {
             log.error("Line not supported: {}", info);
             return;
         }
+
         try {
             line = (TargetDataLine) AudioSystem.getLine(info);
             line.open();
         } catch (LineUnavailableException e) {
-            log.error(e.getLocalizedMessage(), e);
+            log.error("Line not available: {}, Line: {}", e.getLocalizedMessage(), info);
             return;
         }
 
         listener = new Thread(() -> {
             line.start();
             inputStream = new AudioInputStream(line);
+            File wavFile = new File(tempFilePath);
             try {
-                File wavFile = new File(tempFilePath);
-                AudioSystem.write((AudioInputStream) inputStream, AudioFileFormat.Type.WAVE, wavFile);
+                AudioSystem.write(inputStream, AudioFileFormat.Type.WAVE, wavFile);
             } catch (IOException e) {
-                log.error(e.getLocalizedMessage(), e);
+                log.error("Listener exception: {}", e.getLocalizedMessage());
             }
         });
         listener.start();
@@ -102,15 +72,36 @@ public class AudioByteFetcherService implements BytesFetcher {
             line.close();
         }
 
-        log.info("Stopped");
+        log.info("{} Stop", getClass().getName());
+    }
+
+    @Override
+    public boolean inProgress() {
+        return listener != null && listener.isAlive() && !listener.isInterrupted();
+    }
+
+    @Override
+    public byte[] getBytes() {
+        List<Byte> res = new ArrayList<>();
+
+        try {
+            byte[] bytes = Files.readAllBytes(Path.of(tempFilePath));
+            for (int i = 0; i < bytes.length; i++) {
+                byte b = bytes[i];
+                if (b < noyceLevel) {
+                    b = -128;
+                }
+                res.add(b);
+            }
+        } catch (IOException e) {
+            log.info("{} Bytes fetch exception: {}", getClass().getName(), e.getLocalizedMessage());
+        }
+
+        return Bytes.toArray(res);
     }
 
     @Override
     public void drop() {
-        try {
-            Files.delete(Path.of(tempFilePath));
-        } catch (IOException e) {
-            log.error(e.getLocalizedMessage());
-        }
+
     }
 }
